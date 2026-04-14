@@ -1,0 +1,340 @@
+# Ignore common non-source files (logs, OS files, builds, IDE settings, binaries, media, archives, envs, generated files)
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+Icon?
+ehthumbs.db
+
+# Temporary / editor swap files
+*~
+*.swp
+*.swo
+*.swn
+
+# Logs and runtime files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.seed
+*.pid.lock
+tmp/
+temp/
+
+# Environment / secrets
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.crt
+*.asc
+secrets.json
+
+# Node / JS
+node_modules/
+.pnp/
+.pnp.js
+dist/
+build/
+out/
+.vite/
+.cache/
+.next/
+.nuxt/
+.svelte-kit/
+parcel-cache/
+*.tgz
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+venv/
+.venv/
+env/
+ENV/
+pip-wheel-metadata/
+wheelhouse/
+
+
+
+# Rust / Cargo
+/target/
+/**/*.rlib
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
+
+# JetBrains
+/.idea/
+/*.iws
+/*.iml
+/*.ipr
+
+# Visual Studio Code workspace / settings
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Archives and packages
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Media / binary assets (images, audio, video, fonts)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+*.bmp
+*.tiff
+*.psd
+*.ai
+*.eps
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# Documents and office files
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.odt
+*.ods
+*.odp
+
+# Data files
+*.csv
+*.tsv
+*.sqlite
+*.db
+*.db3
+*.h5
+*.hdf5
+
+# Containers / virtualization
+.vagrant/
+.vagrant.d/
+docker-compose.override.yml
+**/Dockerfile.*.swp
+
+# Build system / CI caches
+.cache/
+coverage/
+*.cover
+*.lcov
+.nyc_output
+jest-coverage/
+reports/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Misc
+*.bak
+*.orig
+*.backup
+*.swm
+*.log.*
+.idea_modules/
+coverage/
+
+# Keep README / LICENSE / source code tracked: do not ignore these explicitly.
+```// filepath: /home/edu/Area_de_Trabalho/Projs/links/.gitignore
+# Ignore common non-source files (logs, OS files, builds, IDE settings, binaries, media, archives, envs, generated files)
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+Icon?
+ehthumbs.db
+
+# Temporary / editor swap files
+*~
+*.swp
+*.swo
+*.swn
+
+# Logs and runtime files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.pid
+*.seed
+*.pid.lock
+tmp/
+temp/
+
+# Environment / secrets
+.env
+.env.*
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.pem
+*.key
+*.crt
+*.asc
+secrets.json
+
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+*.ipr
+*.iws
+*.sublime-workspace
+*.sublime-project
+*.code-workspace
+
+
+# Visual Studio Code workspace / settings
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Archives and packages
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Media / binary assets (images, audio, video, fonts)
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+*.webp
+*.bmp
+*.tiff
+*.psd
+*.ai
+*.eps
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.flv
+*.wmv
+*.ttf
+*.otf
+*.woff
+*.woff2
+
+# Documents and office files
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
+*.xls
+*.xlsx
+*.odt
+*.ods
+*.odp
+
+# Data files
+*.csv
+*.tsv
+*.sqlite
+*.db
+*.db3
+*.h5
+*.hdf5
+
+# Containers / virtualization
+.vagrant/
+.vagrant.d/
+docker-compose.override.yml
+**/Dockerfile.*.swp
+
+# Build system / CI caches
+.cache/
+coverage/
+*.cover
+*.lcov
+.nyc_output
+jest-coverage/
+reports/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Misc
+*.bak
+*.orig
+*.backup
+*.swm
+*.log.*
+.idea_modules/
+coverage/
+
+# Keep README / LICENSE / source code tracked: do not ignore these explicitly.
