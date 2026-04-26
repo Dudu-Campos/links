@@ -74,6 +74,8 @@ wheelhouse/
 /**/*.rlib
 
 # .NET
+*.bin
+*.json
 bin/
 obj/
 *.user
