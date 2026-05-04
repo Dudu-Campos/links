@@ -3,8 +3,9 @@
 
 #include <iostream>
 #include <vector>
-#include <eigen3/Eigen/Dense>
-#include <eigen3/Eigen/Sparse>
+#include <unordered_set>
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <fstream>
 #include <sstream>
 #include <set>
@@ -20,7 +21,8 @@
 #include <functional>
 
 struct ResultItem {
-    std::vector<double> data;
+    int node;
+    double prob;
 };
 
 struct RowProb {
@@ -47,45 +49,40 @@ struct EdgeKeyHash {
 
 
 struct StatsAccumulator {
-    int size = 0; 
-    double s1 = 0.0;
-    double s2 = 0.0;
-    double s3 = 0.0;
-    double s4 = 0.0;
-    double raw_entropy = 0.0;
-    int bins[10] = {0}; // NOVO: Guarda a contagem em 10 intervalos
+    double s1 = 0, s2 = 0, s3 = 0, s4 = 0;
+    double raw_entropy = 0;
+    int size = 0;
+    float bins[10] = {0};
 };
 
-#pragma pack(push, 1)
+
 struct InputEdge {
     int32_t col;
     int32_t row1;
     float prob;
 };
 
+
+
 struct OutputEdge {
     int32_t col;
     int32_t row1;
-    float kurt_skew;
+    float kurt;
+    float skew;
     float entropy;
 };
-#pragma pack(pop)
-
-
-
 struct Pipeline {
     std::queue<RowProb> queue;
     std::mutex mtx;
-    std::condition_variable cv_consumer; // Notifica o consumidor
-    std::condition_variable cv_producer; // Notifica os produtores
+    std::condition_variable cv_consumer; 
+    std::condition_variable cv_producer; 
     bool finished = false;
-    const size_t max_queue_size = 500000; // Limite de segurança (ajuste conforme sua RAM)
+    const size_t max_queue_size = 10000;
 
     void push_batch(const std::vector<RowProb>& local_buffer) {
-        if (local_buffer.empty()) return; // IMPRESCINDÍVEL: Não travar por buffers vazios
+        if (local_buffer.empty()) return; 
         
         std::unique_lock<std::mutex> lock(mtx);
-        // Se já terminou, não vale a pena esperar por espaço
         if (finished) return;
 
         cv_producer.wait(lock, [this, &local_buffer] {
@@ -100,7 +97,6 @@ struct Pipeline {
         cv_consumer.notify_one(); 
     }
 
-    // Atualize o push individual também se ainda o utilizar
     void push(int colInic, int row, float prob) {
         std::unique_lock<std::mutex> lock(mtx);
         cv_producer.wait(lock, [this] { return queue.size() < max_queue_size || finished; });
@@ -124,7 +120,6 @@ struct Pipeline {
             queue.pop();
         }
 
-        // Notifica produtores que agora há espaço na fila
         cv_producer.notify_all(); 
         return true;
     }
@@ -137,6 +132,11 @@ struct Prediction {
 };
 
 
+struct TargetHash {
+    size_t operator()(const std::pair<int, int>& p) const {
+        return std::hash<int>()(p.first) ^ (std::hash<int>()(p.second) << 1);
+    }
+};
 
 void aggregator_thread(Pipeline& pipe, 
                        std::unordered_map<EdgeKey, StatsAccumulator, EdgeKeyHash>& edge_stats,
@@ -146,16 +146,16 @@ void aggregator_thread(Pipeline& pipe,
 
 void build_homogeneous(
     const std::vector<std::vector<int>>& edges,
-    Eigen::SparseMatrix<bool, Eigen::ColMajor>& B,      // saída: matriz N x N
-    std::unordered_map<int,int>& node_id_map,           // original -> idx
-    std::unordered_map<int,int>& inverse_map,           // idx -> original
-    std::unordered_map<int,int>& degree_map,            // original -> grau total
+    Eigen::SparseMatrix<int8_t, Eigen::ColMajor>& B,     
+    std::unordered_map<int,int>& node_id_map,          
+    std::unordered_map<int,int>& inverse_map,           
+    std::unordered_map<int,int>& degree_map,           
     bool is_directed);     
 
 
 void build_bipartite(
     const std::vector<std::vector<int>>& edges,
-    Eigen::SparseMatrix<bool, Eigen::ColMajor>& B,                     
+    Eigen::SparseMatrix<int8_t, Eigen::ColMajor>& B,                     
     std::unordered_map<int,int>& left_id_map,                         
     std::unordered_map<int,int>& right_id_map,                        
     std::unordered_map<int,int>& inverse_left,   
@@ -165,15 +165,17 @@ void build_bipartite(
     bool is_directed);
 
 void calc_probability(
-    const Eigen::SparseMatrix<bool, Eigen::ColMajor>& mat,
+    const Eigen::SparseMatrix<int8_t, Eigen::ColMajor>& mat,
     int col1,
     int fixed_idx,
     int numberNeighbors,
-    std::unordered_map<int,int>& inverse_left,
-    std::unordered_map<int,int>& inverse_right,
-    std::unordered_map<int,int>& left_degrees,
-    std::unordered_map<int,int>& right_degrees,
+    const std::unordered_map<int,int>& inverse_left,
+    const std::unordered_map<int,int>& inverse_right,
+    const std::unordered_map<int,int>& left_degrees,
+    const std::unordered_map<int,int>& right_degrees,
     const std::vector<double>& inv_log_right, 
+    const std::vector<std::vector<int>>& row_adj_list,
+    const std::unordered_map<int, std::vector<int>>& target_adj_list,
     Pipeline& pipe);
 
 

@@ -6,6 +6,7 @@
 #include <ctime>
 #include <iterator> 
 #include <cassert>
+#include <unordered_set>
 #include "prob_calc.h"
 #include <filesystem>
 #include <sys/statvfs.h> 
@@ -14,8 +15,8 @@
 #include <queue>
 #include <algorithm>
 #include <vector>
-#include <eigen3/Eigen/Dense>
-#include <eigen3/Eigen/Sparse>
+#include <Eigen/Dense>
+#include <Eigen/Dense>
 #include <fstream>
 #include <sstream>
 #include <set>
@@ -30,13 +31,13 @@
 struct OutputEdgeHist {
     int32_t col;
     int32_t row1;
-    float bins[10]; // As 10 "fatias" da distribuição (Decis)
+    float bins[10]; 
 };
 
 struct TaskDef {
     int col;
     int fixed_idx;
-    int peso; // -1 significa "calcular tudo". >= 0 significa "tarefa fatiada"
+    int peso; 
 };
 
 bool has_enough_disk_space(const std::string& filepath, double min_free_fraction = 0.10) {
@@ -84,22 +85,42 @@ int main(int argc, char* argv[]){
     int NeighSize = std::stoi(argv[3]);
     std::string seed = argv[4];
     int mode_flag = std::stoi(argv[5]);
-    bool use_writer = (mode_flag == 1);
+    std::string TargetAdress = argv[6];
+    bool use_writer = 0;
+
+    std::unordered_map<int, std::vector<int>> target_adj_list;
+    std::ifstream t_file(TargetAdress);
+    std::string t_line;
+    
+    std::cout << "Carregando alvos (targets) agrupados...\n";
+    while (std::getline(t_file, t_line)) {
+        std::stringstream t_ss(t_line);
+        std::string u_str, v_str;
+        if (std::getline(t_ss, u_str, ',') && std::getline(t_ss, v_str, ',')) {
+            try {
+                target_adj_list[std::stoi(u_str)].push_back(std::stoi(v_str));
+            } catch (...) {}
+        }
+    }
+    
+    int total_targets = 0;
+    for (auto& pair : target_adj_list) {
+        std::sort(pair.second.begin(), pair.second.end());
+        total_targets += pair.second.size();
+    }
+    std::cout << "Foram carregados " << total_targets << " pares alvo otimizados.\n";
 
     std::filesystem::create_directories(SaveAdress);
 
-    Eigen::SparseMatrix<bool, Eigen::ColMajor> B;
+    Eigen::SparseMatrix<int8_t, Eigen::ColMajor> B;
     std::unordered_map<int,int> left_id_map, right_id_map, inverse_left, inverse_right;
     std::unordered_map<int,int> left_degree, right_degree;
     
     auto data = read_csv(TrainAdress);
     bool is_directed = false;
-    
     build_bipartite(data, B, left_id_map, right_id_map, inverse_left, inverse_right, left_degree, right_degree, is_directed);
-  
-    // ==============================================================
-    // PRÉ-CÁLCULO DA TABELA DE LOGARITMOS (Itens / Direita)
-    // ==============================================================
+
+
     std::vector<double> inv_log_right(inverse_right.size(), 1.0);
     double eps = std::numeric_limits<double>::epsilon();
 
@@ -111,9 +132,14 @@ int main(int argc, char* argv[]){
             inv_log_right[k] =  std::log(1.0 + d_right + eps);
         }
     }   
-   
-    std::cout << "left_id_map size: " << left_id_map.size() << std::endl;
-    std::cout << "right_id_map size: " << right_id_map.size() << std::endl;
+
+    std::vector<std::vector<int>> row_adj_list(inverse_right.size() + inverse_left.size());
+
+    for (int k = 0; k < B.outerSize(); ++k) {
+        for (Eigen::SparseMatrix<int8_t>::InnerIterator it(B, k); it; ++it) {
+            row_adj_list[it.row()].push_back(it.col()); 
+        }
+    }
 
     std::vector<TaskDef> tasks;
     std::atomic<size_t> current_task{0};
@@ -121,17 +147,9 @@ int main(int argc, char* argv[]){
     if (num_threads == 0) num_threads = 12;
 
     std::vector<std::thread> workers;
-    const int HUB_THRESHOLD = 40;
     for (int col = 0; col < left_id_map.size() ; ++col) {
         int deg = left_degree[inverse_left[col]];
-        
-        if (deg > HUB_THRESHOLD) {
-            for (int j = 0; j < deg; ++j) {
-                tasks.push_back({col, j,deg});
-            }
-        } else {
-            tasks.push_back({col, -1,deg}); 
-        }
+        tasks.push_back({col, -1, deg}); 
     }
     
     auto start_time = std::chrono::high_resolution_clock::now();
@@ -140,11 +158,9 @@ int main(int argc, char* argv[]){
     std::vector<std::unordered_map<int32_t, int>> all_col_max_size(num_threads);
 
     std::sort(tasks.begin(), tasks.end(), [](const TaskDef& a, const TaskDef& b) {
-        if (a.peso != b.peso) return a.peso > b.peso; 
-        return a.fixed_idx < b.fixed_idx; 
+        return a.peso > b.peso; 
     });
 
-    // ===================== WORKERS =====================
     for (unsigned int i = 0; i < num_threads; ++i) {
         workers.emplace_back([&, i]() {
             Pipeline local_pipe;
@@ -169,7 +185,7 @@ int main(int argc, char* argv[]){
                         B, task.col, task.fixed_idx, NeighSize,
                         inverse_left, inverse_right,
                         left_degree, right_degree,
-                        inv_log_right, local_pipe
+                        inv_log_right,row_adj_list,target_adj_list,local_pipe
                     );
                 }
             } catch (const std::exception& e) {
@@ -196,9 +212,7 @@ int main(int argc, char* argv[]){
         if (t.joinable()) t.join();
     }
     
-    // ========================================================================
-    // AGREGAÇÃO E ESCRITA FINAL (MODOS 0 e 2)
-    // ========================================================================
+
     if (!use_writer) {
         std::cout << "Agregação local concluída. Fundindo mapas paralelamente...\n";
 
@@ -214,7 +228,6 @@ int main(int argc, char* argv[]){
             global_partitions[i].reserve((total_estimado / num_threads) + 10000);
         }
 
-        // --- FASE 1: MERGE (Fundir os mapas) ---
         std::vector<std::thread> merge_workers;
         for (unsigned int p = 0; p < num_threads; ++p) {
             merge_workers.emplace_back([&, p]() {
@@ -235,28 +248,27 @@ int main(int argc, char* argv[]){
                             float prob = static_cast<float>(st.s1 / (st.size > 0 ? st.size : 1.0));
                             int bin_index = 0;
 
-                            if (prob >= 0.5f) {
-                                bin_index = 9;       // Probabilidades gigantes (50% a 100%)
-                            } else if (prob >= 0.5f) {
-                                bin_index = 8;       // 20% a 50%
-                            } else if (prob >= 0.35f) {
-                                bin_index = 7;       // 10% a 20%
-                            } else if (prob >= 0.25f) {
-                                bin_index = 6;       // 5% a 10%
+                            if (prob >= 0.85f) {
+                                bin_index = 9;    
+                            } else if (prob >= 0.70f) {
+                                bin_index = 8;    
+                            } else if (prob >= 0.55f) {
+                                bin_index = 7;    
+                            } else if (prob >= 0.40f) {
+                                bin_index = 6;    
+                            } else if (prob >= 0.30f) {
+                                bin_index = 5;     
                             } else if (prob >= 0.20f) {
-                                bin_index = 5;       // 1% a 5%
-                            } else if (prob >= 0.15f) {
-                                bin_index = 4;       // 0.5% a 1%
+                                bin_index = 4;      
                             } else if (prob >= 0.10f) {
-                                bin_index = 3;       // 0.1% a 0.5%
+                                bin_index = 3;     
                             } else if (prob >= 0.05f) {
-                                bin_index = 2;       // 0.05% a 0.1%
+                                bin_index = 2;      
                             } else if (prob >= 0.01f) {
-                                bin_index = 1;       // 0.01% a 0.05%
+                                bin_index = 1;     
                             } else {
-                                bin_index = 0;       // Probabilidades microscópicas (< 0.01%)
+                                bin_index = 0;      
                             }
-                            
                             global_st.bins[bin_index] += 1.0f;
                         
                     }
@@ -278,7 +290,6 @@ int main(int argc, char* argv[]){
         }
         for (auto& t : merge_workers) { if (t.joinable()) t.join(); }
 
-        // --- FASE 2: MATEMÁTICA E ESCRITA ---
         std::cout << "Calculando Features paralelamente e gravando arquivo...\n";
 
         std::string out_filename = (mode_flag == 2) ? "_final_histograms_output.bin" : "_final_kurtosis_output.bin";
@@ -298,7 +309,6 @@ int main(int argc, char* argv[]){
                 for (const auto& [key, st] : global_partitions[p]) {
                     
                     if (mode_flag == 2) {
-                        // MODO 2: HISTOGRAMAS (10 DECIS)
                         OutputEdgeHist out_hist;
                         out_hist.col = key.col;
                         out_hist.row1 = key.row1;
@@ -312,49 +322,34 @@ int main(int argc, char* argv[]){
                         local_buffer_hist.push_back(out_hist);
                     } 
                     else if (mode_flag == 0) {
-                        // MODO 0: CURTOSE E SKEWNESS
                         double N = static_cast<double>(global_col_max_partitions[p][key.col]); 
-                        double skew = 0.0;
-                        double kurt_acoplada = 0.0;
-                        double entropy = 10.0;
+                        
+                        float skew_final = 0.0f;
+                        float kurt_final = 0.0f;
+                        float entropy = 10.0f; 
+                        
 
                         if (N >= 4.0) {
-                            double mu = st.s1 / N;
-                            double m2 = st.s2 - N * (mu * mu);
-                            double m3 = st.s3 - 3.0 * mu * st.s2 + 3.0 * (mu * mu) * st.s1 - N * (mu * mu * mu);
-                            double var = m2 / (N - 1.0);
+                            double mean = st.s1 / N;
+                            
+                            double m2_raw = st.s2 / N;
+                            double m3_raw = st.s3 / N;
+                            double m4_raw = st.s4 / N;
+
+                            double var = m2_raw - (mean * mean);
 
                             if (var > 1e-12) {
+                                double mu3 = m3_raw - 3.0 * mean * m2_raw + 2.0 * (mean * mean * mean);
+                                double mu4 = m4_raw - 4.0 * mean * m3_raw + 6.0 * (mean * mean) * m2_raw - 3.0 * (mean * mean * mean * mean);
+
                                 double std_dev = std::sqrt(var);
-                                skew = (N / ((N - 1.0) * (N - 2.0))) * (m3 / (std_dev * std_dev * std_dev));
-                            }
+                                double skew_pop = mu3 / (std_dev * std_dev * std_dev);
+                                
+                                skew_final = static_cast<float>((std::sqrt(N * (N - 1.0)) / (N - 2.0)) * skew_pop);
 
-                            double N_acoplado = N + 1.0;
-                            double s1_acoplado = st.s1 + skew;
-                            double s2_acoplado = st.s2 + (skew * skew);
-                            double s3_acoplado = st.s3 + (skew * skew * skew);
-                            double s4_acoplado = st.s4 + (skew * skew * skew * skew);
-
-                            double mu_acop = s1_acoplado / N_acoplado;
-                            double m2_acop = s2_acoplado - N_acoplado * (mu_acop * mu_acop);
-                            
-                            double m4_acop = s4_acoplado 
-                                        - 4.0 * mu_acop * s3_acoplado 
-                                        + 6.0 * (mu_acop * mu_acop) * s2_acoplado 
-                                        - 4.0 * (mu_acop * mu_acop * mu_acop) * s1_acoplado 
-                                        + N_acoplado * (mu_acop * mu_acop * mu_acop * mu_acop);
-
-                            double var_acop = m2_acop / (N_acoplado - 1.0);
-
-                            if (var_acop > 1e-12 && std::isfinite(var_acop)) {
-                                double std_acop = std::sqrt(var_acop);
-                                double term1 = (N_acoplado * (N_acoplado + 1.0)) / ((N_acoplado - 1.0) * (N_acoplado - 2.0) * (N_acoplado - 3.0));
-                                double denom = (std_acop * std_acop * std_acop * std_acop);
-                                if (denom < 1e-12) denom = 1e-12;
-                                double term2 = m4_acop / denom;
-                                double term3 = (3.0 * (N_acoplado - 1.0) * (N_acoplado - 1.0)) / ((N_acoplado - 2.0) * (N_acoplado - 3.0));
-
-                                kurt_acoplada = (term1 * term2) - term3;
+                                double kurt_pop_excess = (mu4 / (var * var)) - 3.0;
+                                
+                                kurt_final = static_cast<float>(((N - 1.0) / ((N - 2.0) * (N - 3.0))) * ((N + 1.0) * kurt_pop_excess + 6.0));
                             }
                         }
 
@@ -365,14 +360,14 @@ int main(int argc, char* argv[]){
                         OutputEdge out;
                         out.row1 = key.row1;
                         out.col = key.col;
-                        out.kurt_skew = static_cast<float>(kurt_acoplada * skew);
+                        out.kurt = static_cast<float>(kurt_final);
+                        out.skew = static_cast<float>(skew_final);
                         out.entropy = static_cast<float>(entropy);
                         
                         local_buffer_kurt.push_back(out);
                     }
                 }
                 
-                // ESCRITA PROTEGIDA POR LOCK
                 std::lock_guard<std::mutex> lock(file_mtx);
                 if (mode_flag == 2 && !local_buffer_hist.empty()) {
                     out_file.write(reinterpret_cast<const char*>(local_buffer_hist.data()), local_buffer_hist.size() * sizeof(OutputEdgeHist));
@@ -389,13 +384,11 @@ int main(int argc, char* argv[]){
         std::cout << "Processamento (Writer) concluído! Resultados brutos guardados nos ficheiros das threads." << std::endl;
     }
 
-    // Gravação do tempo no final, independentemente do modo escolhido
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     
     std::ofstream myFile(SaveAdress + "/time_" + seed + ".csv");
     myFile << elapsed.count();
     myFile.close();
-
     return 0;
 }

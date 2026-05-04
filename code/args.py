@@ -22,6 +22,7 @@ def overall_args():
     parser.add_argument("--exec_path", dest="exec_path", type=str,nargs='?', default=f'{Path.cwd()}')
     parser.add_argument("--Gs",dest="GraphSize",type=int, default=2625)
     parser.add_argument("--d",dest="dataset",type=str,default="ml-100k")
+    parser.add_argument("--F",dest="Filter",type=int,default="10")
     parser.add_argument("--perct", dest = "perct",type=float, default = 0.1)
     parser.add_argument("--Ns", dest = "NeighSize",type=int, default = 1)
     parser.add_argument("--Pr", dest = "PruningRatio",type=int, default = 1)

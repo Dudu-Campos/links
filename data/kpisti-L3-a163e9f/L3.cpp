@@ -81,7 +81,7 @@ int main(int argc, char** argv)
         }
         
     char lag[255];
-    sprintf(lag,"/home/edu/Area_de_Trabalho/Projs/links/data/kpisti-L3-a163e9f/L3_predictions_graph.txt.dat");
+    sprintf(lag,"/home/william/CSGR-bracis2026/links/data/kpisti-L3-a163e9f/L3_predictions_graph.txt.dat");
     ofstream l(lag, ios::out);
     /* if (!l) */
     /*     {cout << "Error during file operation!\n";
