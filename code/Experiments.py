@@ -853,8 +853,8 @@ if __name__ == "__main__":
                         args.InvertedGraph = False
                         runMethod(args)
                         time.sleep(15)
-                        # gc.collect()
-                        # evaluateBaselines(args)
+                        gc.collect()
+                        evaluateBaselines(args)
                         gc.collect()
                         time.sleep(15)
 
