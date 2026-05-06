@@ -1,16 +1,16 @@
-# Condictional Space Graph Representation
+# Conditional Space Graph Representation
 
 **Conference:** BRACIS2026
 ---
 
-## Descriction
+## Description
 
-New approach implementation to graph representation. Feature space that encodes co-ocorrences links.
-
+New approach implementation to graph representation. Feature space that encodes co-occurrences links.
 
 ## Repository
 
-├── data/       
+```text
+├── data/        
 ├────citeulike              # Dataset
 ├────lastfm                 # Dataset
 ├────ml-100k                # Dataset
