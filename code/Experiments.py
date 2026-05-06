@@ -80,7 +80,6 @@ def evaluateBaselines(args):
         "GraphSAGE": lambda: getGraphSAGE(trainFile, targetFile),
         "Katz": lambda: getKatz(trainFile, max_path_len=3, beta=0.005),
         "L3": lambda: getL3(args, trainFile),
-        "CommonNeighbors": lambda: getCommonNeighbors(trainFile),
         "GD": lambda: getGD(trainFile, max_dist=5)
     }
 
@@ -363,8 +362,10 @@ def runMethod(args):
     
     print(f"Gerando target para {args.dataset} (Subgrafo Amostrado)...")
     
-    ratio_normal = 100 
-    target_neg = int(len(pos_test) * ratio_normal)
+    ratio_teste = 100 
+    ratio_treino = 10
+    # Garante negativos suficientes para o teste 1:100 E para o treino 1:10
+    target_neg = int(len(pos_test) * ratio_teste) + int(len(train_raw) * ratio_treino)
     print(len(pos_test))
     print(target_neg)
     df_pos_reais = df_pos[['leftNode', 'rightNode']].copy()
@@ -525,7 +526,9 @@ def runMethod(args):
         neg_indices = np.where(is_negative)[0]
         n_train_pos = np.sum(is_train_pos) 
     
-        train_neg_idx = rng.choice(neg_indices, size=n_train_pos, replace=False)
+        # Amostra 10 vezes mais negativos do que positivos para o treino
+        n_train_neg = int(n_train_pos * ratio_treino) 
+        train_neg_idx = rng.choice(neg_indices, size=n_train_neg, replace=False)
     
         test_neg_idx = np.array(list(set(neg_indices) - set(train_neg_idx)))
         train_mask = np.zeros(len(X), dtype=bool)
@@ -574,7 +577,8 @@ def runMethod(args):
             "objective": "binary:logistic",
             "eval_metric": "logloss",
             "tree_method": "hist",
-            "max_bin": 16
+            "max_bin": 16,
+            "scale_pos_weight": ratio_treino 
         }
 
         def evaluate(y_true, y_score, modelo_nome):
@@ -617,7 +621,7 @@ def runMethod(args):
 
             model = xgb.train(params, dtrain, num_boost_round=100)
             y_score = model.predict(dtest)
-
+            print(y_score)
             print(f"Resultados: {nome}")
             
             evaluate(y_test, y_score, nome) 
@@ -635,76 +639,63 @@ def runMethod(args):
 
         del X_train, X_test, y_train, y_test
         gc.collect()
-
 def getL3(args, train_graph_path):
+    # 1. Preparação dos dados
     train_graph_df = pd.read_csv(train_graph_path, header=None)
     train_graph_df[[0,1]] = train_graph_df[[1,0]]
     train_graph_df["weight"] = 1
-    if os.path.exists(f"{args.exec_path}/data/kpisti-L3-a163e9f/graph.txt"): os.remove(f"{args.exec_path}/data/kpisti-L3-a163e9f/graph.txt")
-    train_graph_df.to_csv(f"{args.exec_path}/data/kpisti-L3-a163e9f/graph.txt", header=None, sep=" ", index=False)
+    
+    # 2. Definição dos caminhos
+    l3_dir = f"{args.exec_path}/data/kpisti-L3-a163e9f"
+    input_graph_path = f"{l3_dir}/graph.txt"
+    output_graph_path = f"{l3_dir}/L3_predictions_graph.txt"
+    cpp_source = f"{l3_dir}/L3.cpp"
+    exec_path = f"{l3_dir}/teste.out"
+    
+    # 3. Limpeza de execuções anteriores
+    if os.path.exists(input_graph_path): 
+        os.remove(input_graph_path)
+    if os.path.exists(output_graph_path): 
+        os.remove(output_graph_path)
+        
+    train_graph_df.to_csv(input_graph_path, header=None, sep=" ", index=False)
+    
+    # ==========================================
+    # 4. Compilação do código C++ (AGORA COM ASPAS NOS PATHS)
+    # ==========================================
+    # Coloquei aspas duplas ao redor do cpp_source e do exec_path
+    compile_cmd = f'g++ "{cpp_source}" -o "{exec_path}" -O3'
+    
+    print("Compilando o código C++...")
+    compilacao = subprocess.run(compile_cmd, shell=True, cwd=l3_dir, capture_output=True, text=True)
+    
+    if compilacao.returncode != 0:
+        print(f"ERRO DE COMPILAÇÃO:\n{compilacao.stderr}")
+        raise RuntimeError("Falha ao compilar o L3.cpp")
+    # ==========================================
+    
+    # 5. Execução do C++ (TAMBÉM COM ASPAS)
     inicio = time.perf_counter()
-    subprocess.run(f"{args.exec_path}/data/kpisti-L3-a163e9f/teste.out {args.exec_path}/data/kpisti-L3-a163e9f/graph.txt", shell=True
-    ,cwd=f"{args.exec_path}/data/kpisti-L3-a163e9f")
-    subprocess.run(f"mv {args.exec_path}/data/kpisti-L3-a163e9f/L3_predictions_graph.txt.dat {args.exec_path}/data/kpisti-L3-a163e9f/L3_predictions_graph.txt",
-     shell=True,cwd=f"{args.exec_path}/data/kpisti-L3-a163e9f")
+    
+    print("Executando a predição L3...")
+    # Aspas duplas ao redor do executável e dos arquivos de entrada/saída
+    run_cmd = f'"{exec_path}" "{input_graph_path}" "{output_graph_path}"'
+    execucao = subprocess.run(run_cmd, shell=True, cwd=l3_dir, capture_output=True, text=True)
+    
+    if execucao.returncode != 0:
+        print(f"ERRO NA EXECUÇÃO DO C++:\n{execucao.stderr}")
+        raise RuntimeError("O executável do L3 falhou.")
+        
     fim = time.perf_counter()
     total_time = fim - inicio
-    result = pd.read_csv(f"{args.exec_path}/data/kpisti-L3-a163e9f/L3_predictions_graph.txt", sep="\t", header=None)
-    result.columns = ["rightNode","leftNode", "pred"]
+    
+    # 6. Leitura dos resultados
+    result = pd.read_csv(output_graph_path, sep="\t", header=None)
+    result.columns = ["rightNode", "leftNode", "pred"]
     result["leftNode"] = result["leftNode"].astype(int)
     result["rightNode"] = result["rightNode"].astype(int)
  
-    return [result[["leftNode","rightNode", "pred"]],total_time]
-
-def getCommonNeighbors(train_graph_path):
-    """
-    Compute a bipartite-aware "common neighbors" score for left->right pairs.
-    We use the biadjacency matrix B (L x R) and compute M = B * B.T * B (L x R).
-    M[i,j] counts length-3 paths left_i -> right_k -> left_l -> right_j, a useful
-    bipartite analogue for common-neighbors-based link scoring.
-    Returns a DataFrame with columns ["rightNode","leftNode","pred"] sorted by pred desc.
-    """
-
-    g = pd.read_csv(train_graph_path, header=None)
-    if g.shape[1] < 2:
-        raise ValueError("train_graph must have at least two columns (left,right)")
-    g = g.rename(columns={0: "leftNode", 1: "rightNode"})
-    g["leftNode"] = g["leftNode"].astype(int)
-    g["rightNode"] = g["rightNode"].astype(int)
-
-    left_nodes = pd.Index(g["leftNode"].unique())
-    right_nodes = pd.Index(g["rightNode"].unique())
-    nL = len(left_nodes)
-    nR = len(right_nodes)
-    idxL = {n: i for i, n in enumerate(left_nodes)}
-    idxR = {n: i for i, n in enumerate(right_nodes)}
-
-    rows = g["leftNode"].map(idxL).values
-    cols = g["rightNode"].map(idxR).values
-    data = np.ones(len(rows), dtype=float)
-    inicio = time.time()
-
-    B = sp.csr_matrix((data, (rows, cols)), shape=(nL, nR), dtype=float)
-
-    M = (B.dot(B.T)).dot(B)  
-
-    M_coo = M.tocoo()
-    if M_coo.nnz == 0:
-        return pd.DataFrame(columns=["leftNode","rightNode", "pred"])
-
-    lefts = left_nodes.values[M_coo.row]
-    rights = right_nodes.values[M_coo.col]
-    preds = M_coo.data
-    fim = time.time()
-    total_time = fim - inicio
-
-    df_out = pd.DataFrame({"leftNode": lefts, "rightNode": rights, "pred": preds})
-
-    df_out = df_out[df_out["leftNode"] != df_out["rightNode"]]
-    df_out = df_out.sort_values("pred", ascending=False).reset_index(drop=True)
-
-    df_out = df_out[["leftNode","rightNode", "pred"]]
-    return [df_out,total_time]
+    return [result[["leftNode", "rightNode", "pred"]], total_time]
 
 def getGD(train_graph_path,
            max_dist: int = 3,
@@ -862,8 +853,8 @@ if __name__ == "__main__":
                         args.InvertedGraph = False
                         runMethod(args)
                         time.sleep(15)
-                        gc.collect()
-                        evaluateBaselines(args)
+                        # gc.collect()
+                        # evaluateBaselines(args)
                         gc.collect()
                         time.sleep(15)
 

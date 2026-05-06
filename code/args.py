@@ -20,7 +20,6 @@ def overall_args():
     parser = ArgumentParser()
 
     parser.add_argument("--exec_path", dest="exec_path", type=str,nargs='?', default=f'{Path.cwd()}')
-    parser.add_argument("--Gs",dest="GraphSize",type=int, default=2625)
     parser.add_argument("--d",dest="dataset",type=str,default="ml-100k")
     parser.add_argument("--F",dest="Filter",type=int,default="10")
     parser.add_argument("--perct", dest = "perct",type=float, default = 0.1)
@@ -30,8 +29,6 @@ def overall_args():
     parser.add_argument("--Iv", dest = "InvertedGraph",type=str, default = "direct")
     parser.add_argument("--Rs", dest = "RandomSeed",type=list,default= [0,1,2,3,4])
     parser.add_argument("--Cs", dest = "CurrentSeed",type=int,default= 0)
-    parser.add_argument("--Pf", dest = "Profile", type=str,default ="standard")
-
 
 
     args = parser.parse_args()
